@@ -1,86 +1,110 @@
-/////
-//
-// Tag code. Generates a message every 10 seconds for transmission via relays to Receiver
-// Message format is 
-//  SEQ
-//  TYPE (0,9)  // is a message from the tag, 9 is a reset which is sent first time on startup
-//  TAGID
-//  RELAYID (0)
-//  TTL     (5)
-//  RSSI    (0)
-//  
-/////
-
 #include <SPI.h>
 #include <RH_RF95.h>
+#include <Arduino.h>
+#include <ChaChaPoly.h>
 
-//Singleton instance of radio driver
+// Singleton instance of radio driver
 RH_RF95 rf95;
-int led = 13;   // Define LED pin in case we want to use it to demonstrate activity
+int led = 13; // Define LED pin
 
-//Message fields
+// Message fields
 int SEQ = 0;     // Sequence number
-int TYPE = 0;   // Message type
-int TAGID = 1;  // Identity of tag. Will eventually be read from an SD card.
-int RELAYID = 0; //this is a comment
-int TTL = 5;
+int TYPE = 0;    // Message type
+int TAGID = 1;   // Identity of tag
+int RELAYID = 0; // Relay ID
+int TTL = 5;     // Time to live
 int thisRSSI = 0;
-int firstIteration = 0;   // First time through main loop send a reset (kludge, I know. Should go in setup.
-char message[] = "thisisatest";
+int firstIteration = 0; // First iteration flag
 
+// Encryption details
+const char plaintext[] = "Hello, World!";
+byte key[32] = {
+  0x4f, 0xf6, 0x3b, 0x2c, 0x1a, 0x45, 0x89, 0x6d,
+  0x7e, 0x9c, 0x00, 0x6f, 0x37, 0x11, 0x8a, 0x5b,
+  0x9d, 0x74, 0x6e, 0xb2, 0x3c, 0xf0, 0x1d, 0x97,
+  0x88, 0x6e, 0x3f, 0x52, 0xc8, 0xa0, 0x1d
+};
+byte nonce[12] = {
+  0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+  0x12, 0x34, 0x56, 0x78
+};
+ChaChaPoly chachaPoly;
+byte ciphertext[sizeof(plaintext)];  // Buffer to hold encrypted data
+byte tag[16]; // Buffer for authentication tag
 
-int MESSAGELENGTH = 100;
-int TXINTERVAL = 5000; // Time between transmissions (in ms)
-double CSMATIME = 10;  // Check the status of the channel every 10 ms
+// Declare global variable for hex representation
+char hexCiphertext[sizeof(ciphertext) * 2 + 1];  // +1 for null terminator
+
+// Define buffer length
+#define MESSAGELENGTH 128
+#define TXINTERVAL 5000
+#define CSMATIME 10
 
 void setup() {
-  // Initialise LoRa transceiver
+  // Initialize LoRa transceiver and encryption
   pinMode(led, OUTPUT);
-  Serial.begin(9600); 
+  Serial.begin(9600);
   Serial.println("Tag version 1");
-  while (!Serial)
-    Serial.println("Waiting for serial port");  //Wait for serial port to be available.
-  while (!rf95.init()){
-    Serial.println("Initialisation of LoRa receiver failed");
-    delay(1000);
+
+  if (!rf95.init()) {
+    Serial.println("LoRa initialization failed");
+    while (1); // Stop execution
   }
-  rf95.setFrequency(915.0);   //PB set to use 915 MHz
+
+  rf95.setFrequency(915.0);
   rf95.setTxPower(5, false);
   rf95.setSignalBandwidth(500000);
   rf95.setSpreadingFactor(12);
 
+  // Initialize ChaChaPoly
+  chachaPoly.setKey(key, sizeof(key));
+  chachaPoly.setIV(nonce, sizeof(nonce));
+
+  // Encrypt the plaintext
+  chachaPoly.encrypt(ciphertext, reinterpret_cast<const uint8_t*>(plaintext), sizeof(plaintext) - 1);
+
+  // Compute the authentication tag
+  chachaPoly.computeTag(tag, sizeof(tag));
+
+  // Convert ciphertext to hex string for the message
+  for (size_t i = 0; i < sizeof(ciphertext); ++i) {
+    sprintf(&hexCiphertext[i * 2], "%02x", ciphertext[i]);
+  }
+  hexCiphertext[sizeof(ciphertext) * 2] = '\0'; // Null-terminate the string
 }
 
 void loop() {
   // Generate message intermittently (10 seconds)
   uint8_t buf[MESSAGELENGTH];
-  uint8_t len = sizeof(buf);
-  char str[MESSAGELENGTH]; 
-  if (firstIteration == 0) // kludge to send out a type 9 as first message. Should eventually be in setup.
-    {
-      TYPE = 9;
-      firstIteration = 1;
-    }
-  else
+
+  if (firstIteration == 0) {
+    TYPE = 9;
+    firstIteration = 1;
+  } else {
     TYPE = 0;
-    
-  SEQ++;
-  sprintf(str, "%5d %5d %5d %5d %5d %5d %s", SEQ, TYPE, TAGID, RELAYID, TTL, thisRSSI, message);
-  for (int i=0; i < MESSAGELENGTH; i++)
-    buf[i] = str[i];   
-  rf95.setModeIdle(); // some obscure bug causing loss of every second message  
-    
-  // Channel should be idle but if not wait for it to go idle
-  while (rf95.isChannelActive())
-  {
-    delay(CSMATIME);   // wait for channel to go idle by checking frequently
-    Serial.println("Tag node looping on isChannelActive()"); //DEBUG
   }
-    
-  // Transmit message
-  Serial.print("Transmitted message: ");  //DEBUG
-  Serial.println((char*)buf);           //DEBUG
-  rf95.send(buf, sizeof(buf));
+
+  SEQ++;
+
+  // Create the message
+  char str[MESSAGELENGTH];
+  snprintf(str, sizeof(str), "%5d %5d %5d %5d %5d %5d %s", SEQ, TYPE, TAGID, RELAYID, TTL, thisRSSI, hexCiphertext);
+
+  // Ensure the buffer is large enough and properly null-terminated
+  memset(buf, 0, sizeof(buf)); // Clear the buffer first
+  strncpy((char*)buf, str, sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0'; // Null-terminate
+
+  rf95.setModeIdle(); // Ensure channel is idle
+  while (rf95.isChannelActive()) {
+    delay(CSMATIME);
+    Serial.println("Tag node looping on isChannelActive()"); // DEBUG
+  }
+
+  // Transmit the message
+  Serial.print("Transmitted message: ");
+  Serial.println((char*)buf); // DEBUG
+  rf95.send(buf, strlen((char*)buf));
   rf95.waitPacketSent();
   delay(TXINTERVAL);
 }
