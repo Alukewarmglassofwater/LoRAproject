@@ -107,4 +107,6 @@ void loop() {
   rf95.send(buf, strlen((char*)buf));
   rf95.waitPacketSent();
   delay(TXINTERVAL);
+
+  //This is the current code revision
 }
