@@ -37,7 +37,7 @@ void setup() {
   Serial.begin(9600);
 
   // Initialize EEPROM with a size of 512 bytes (on some Arduino models)
-  EEPROM.begin(512);
+  //EEPROM.begin(512);
 
   // Store the secret key in EEPROM (this would typically be done once)
   saveSecretKeyToEEPROM();

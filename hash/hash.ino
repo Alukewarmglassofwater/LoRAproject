@@ -48,21 +48,23 @@ void setup() {
     Serial.println(" };");
 
 
+
+
     // -------------------------------------------
     // Read the secret key from EEPROM
-    byte retrievedKey[32];
-    readSecretKeyFromEEPROM(retrievedKey);
-
-    // Display the retrieved key (for debugging purposes)
-    Serial.println("Retrieved key from EEPROM:");
-    for (size_t i = 0; i < 32; i++) {
-      if (retrievedKey[i] < 16) {
-        Serial.print('0');  // Add leading zero
-      }
-      Serial.print(retrievedKey[i], HEX);
-      Serial.print(" ");
-    }
-    Serial.println();
+//    byte retrievedKey[32];
+//    readSecretKeyFromEEPROM(retrievedKey);
+//
+//    // Display the retrieved key (for debugging purposes)
+//    Serial.println("Retrieved key from EEPROM:");
+//    for (size_t i = 0; i < 32; i++) {
+//      if (retrievedKey[i] < 16) {
+//        Serial.print('0');  // Add leading zero
+//      }
+//      Serial.print(retrievedKey[i], HEX);
+//      Serial.print(" ");
+//    }
+//    Serial.println();
 }
 
 void loop() {

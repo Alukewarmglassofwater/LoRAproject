@@ -1,10 +1,12 @@
 #include <EEPROM.h>
 #include <SPI.h>
 #include <RH_RF95.h>
+#include <Arduino.h>
 #include <ChaChaPoly.h>
 #include <Crypto.h>
 #include <BLAKE2s.h>
 
+<<<<<<< Updated upstream
 // EEPROM Configuration
 #define HASH_EEPROM_START 0
 #define HASH_SIZE 32
@@ -15,189 +17,76 @@
 #define TXPOWER 23
 #define BANDWIDTH 500000
 #define SPREADING_FACTOR 12
+=======
+#define HASH_EEPROM_START 0    // EEPROM start address to store the hash
+#define HASH_SIZE 32           // Hash size is 32 bytes
+#define MESSAGELENGTH 64       // Max length of the message
+#define TXINTERVAL 5000
+>>>>>>> Stashed changes
 #define CSMATIME 10
 
 // Singleton instance of radio driver
 RH_RF95 rf95;
+uint8_t led = 13; // Define LED pin
 
-// LED Pin
-const uint8_t LED_PIN = 13;
+// Message fields
+uint8_t SEQ = 0;  // Sequence number
+uint8_t TYPE = 0; // Message type
+uint8_t TAGID = 1; // Identity of tag
+uint8_t RELAYID = 0; // Relay ID
+uint8_t TTL = 5; // Time to live
+int thisRSSI = 0;
 
-// Nonce for encryption (must match transmitter)
-const byte nonce[12] = {
-  0x12, 0x34, 0x56, 0x78,
-  0x90, 0xab, 0xcd, 0xef,
+// Nonce for encryption
+byte nonce[12] = {
+  0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
   0x12, 0x34, 0x56, 0x78
 };
 
-// ChaChaPoly instance
 ChaChaPoly chachaPoly;
-
-// Buffers for encrypted and decrypted messages
-char encryptedMessageHex[128];
-char decryptedMessage[128];
-
-// Function Prototypes
-void writeHashToEEPROM(uint8_t* hashResult);
-void readHashFromEEPROM(uint8_t* hashResult);
-void clearEEPROM();
-bool checkEEPROMForData();
-bool compareHashes(uint8_t* hash1, uint8_t* hash2, size_t length);
-void hexStringToBytes(const char* hexString, byte* byteArray, int byteArraySize);
-void listenForMessages();
-void readKeyFromEEPROM(byte* key);
-void checkEEPROMState();
-
-void setup() {
-  // Initialize Serial and LED
-  pinMode(LED_PIN, OUTPUT);
-  Serial.begin(9600);
-  Serial.println(F("Receiver Version 1"));
-
-  // Initialize LoRa
-  if (!rf95.init()) {
-    Serial.println(F("LoRa receiver initialization failed"));
-    while (1); // Halt if LoRa fails to initialize
-  }
-
-  rf95.setFrequency(RF95_FREQ);
-  rf95.setTxPower(TXPOWER, false);
-  rf95.setSignalBandwidth(BANDWIDTH);
-  rf95.setSpreadingFactor(SPREADING_FACTOR);
-
-  // Initial prompt based on EEPROM state
-  checkEEPROMState();
-}
-
-void loop() {
-  // Check for user input
-  if (Serial.available() > 0) {
-    String inputText = Serial.readStringUntil('\n');
-    inputText.trim();  // Remove leading/trailing whitespace
-
-    // Initialize BLAKE2s hash object
-    BLAKE2s hashObject;
-    uint8_t hashResult[HASH_SIZE];
-    uint8_t storedHash[HASH_SIZE];
-
-    if (!checkEEPROMForData()) {
-      // EEPROM is empty: user needs to enter a seed
-      hashObject.update((const uint8_t*)inputText.c_str(), inputText.length());
-      hashObject.finalize(hashResult, sizeof(hashResult));
-
-      // Store the hash in EEPROM
-      writeHashToEEPROM(hashResult);
-      Serial.println(F("Encryption key seed stored in EEPROM."));
-
-      // Debug: Print the stored hash
-      Serial.print(F("Stored seed hash as 32-byte hex array: { "));
-      for (size_t i = 0; i < HASH_SIZE; i++) {
-        if (i != 0) Serial.print(F(", "));
-        Serial.print(F("0x"));
-        if (hashResult[i] < 0x10) Serial.print(F("0"));
-        Serial.print(hashResult[i], HEX);
-      }
-      Serial.println(F(" };"));
-
-      // Prompt to wait for messages
-      Serial.println(F("Waiting for message..."));
-      listenForMessages();  // Start listening for incoming messages
-    }
-    else {
-      // EEPROM is populated: user needs to authenticate or clear EEPROM
-      if (inputText.equalsIgnoreCase("clear")) {
-        clearEEPROM();
-        checkEEPROMState();  // Re-prompt after clearing EEPROM
-      }
-      else {
-        // Authenticate user
-        hashObject.update((const uint8_t*)inputText.c_str(), inputText.length());
-        hashObject.finalize(hashResult, sizeof(hashResult));
-
-        readHashFromEEPROM(storedHash);
-
-        // Debug: Print both hashes to compare
-        Serial.print(F("Stored Hash: { "));
-        for (size_t i = 0; i < HASH_SIZE; i++) {
-          if (i != 0) Serial.print(F(", "));
-          Serial.print(F("0x"));
-          if (storedHash[i] < 0x10) Serial.print(F("0"));
-          Serial.print(storedHash[i], HEX);
-        }
-        Serial.println(F(" };"));
-
-        Serial.print(F("Entered Hash: { "));
-        for (size_t i = 0; i < HASH_SIZE; i++) {
-          if (i != 0) Serial.print(F(", "));
-          Serial.print(F("0x"));
-          if (hashResult[i] < 0x10) Serial.print(F("0"));
-          Serial.print(hashResult[i], HEX);
-        }
-        Serial.println(F(" };"));
-
-        if (compareHashes(hashResult, storedHash, HASH_SIZE)) {
-          Serial.println(F("Authentication successful."));
-          Serial.println(F("Waiting for message..."));
-          listenForMessages();  // Start listening for incoming messages
-        }
-        else {
-          Serial.println(F("Authentication failed."));
-          checkEEPROMState();  // Re-prompt after failed authentication
-        }
-      }
-    }
-
-    delay(500);  // Small delay before next input
-  }
-}
+byte ciphertext[MESSAGELENGTH];  // Buffer to hold encrypted data
+byte tag[16]; // Buffer for authentication tag
 
 // Function to write hash to EEPROM
 void writeHashToEEPROM(uint8_t* hashResult) {
   for (int i = 0; i < HASH_SIZE; i++) {
-    EEPROM.write(HASH_EEPROM_START + i, hashResult[i]);
+    EEPROM.write(HASH_EEPROM_START + i, hashResult[i]);  // Write each byte to EEPROM
   }
 }
 
 // Function to read the stored hash from EEPROM
 void readHashFromEEPROM(uint8_t* hashResult) {
   for (int i = 0; i < HASH_SIZE; i++) {
-    hashResult[i] = EEPROM.read(HASH_EEPROM_START + i);
+    hashResult[i] = EEPROM.read(HASH_EEPROM_START + i);  // Read each byte from EEPROM
   }
 }
 
 // Function to clear EEPROM
 void clearEEPROM() {
   for (int i = 0; i < EEPROM.length(); i++) {
-    EEPROM.write(i, 0xFF);  // Set all bytes to 0xFF (default unprogrammed state)
+    EEPROM.write(i, 0xFF);  // Set each byte to 0xFF (default unprogrammed state)
   }
   Serial.println(F("EEPROM has been cleared."));
 }
 
-// Function to check if EEPROM contains data
+// Function to check if EEPROM contains any non-zero value
 bool checkEEPROMForData() {
   for (int i = 0; i < HASH_SIZE; i++) {
-    if (EEPROM.read(HASH_EEPROM_START + i) != 0xFF) {
-      return true;  // EEPROM has data
+    if (EEPROM.read(HASH_EEPROM_START + i) != 0xFF) {  // 0xFF is the default EEPROM value when unprogrammed
+      return true;  // Found something in EEPROM
     }
   }
-  return false;  // EEPROM is empty
+  return false;  // EEPROM is empty (all default values)
 }
 
 // Function to compare two hash arrays
 bool compareHashes(uint8_t* hash1, uint8_t* hash2, size_t length) {
   for (size_t i = 0; i < length; i++) {
     if (hash1[i] != hash2[i]) {
-      return false;
+      return false;  // Hashes do not match
     }
   }
-  return true;
-}
-
-// Helper function to convert hex string to bytes
-void hexStringToBytes(const char* hexString, byte* byteArray, int byteArraySize) {
-  for (int i = 0; i < byteArraySize; i++) {
-    sscanf(&hexString[i * 2], "%2hhx", &byteArray[i]);
-  }
+  return true;  // Hashes match
 }
 
 // Function to read encryption key from EEPROM
@@ -207,79 +96,163 @@ void readKeyFromEEPROM(byte* key) {
   }
 }
 
-// Function to check EEPROM state and prompt user accordingly
-void checkEEPROMState() {
+void setup() {
+  // Initialize serial communication and LoRa transceiver
+  Serial.begin(9600);
+  pinMode(led, OUTPUT);
+  
+  if (!rf95.init()) {
+    Serial.println(F("LoRa initialization failed"));
+    while (1); // Stop execution
+  }
+
+  rf95.setFrequency(915.0);
+  rf95.setTxPower(5, false);
+  rf95.setSignalBandwidth(500000);
+  rf95.setSpreadingFactor(12);
+
+  // Check if EEPROM is populated
   if (checkEEPROMForData()) {
     Serial.println(F("EEPROM contains data. Please type your password to authenticate or 'clear' to erase EEPROM."));
-  }
-  else {
+  } else {
     Serial.println(F("EEPROM is empty. Please enter a seed for your encryption key:"));
   }
 }
 
-// Function to listen for incoming messages and decrypt them
-void listenForMessages() {
-  while (true) {  // Infinite loop to keep listening for messages
-    uint8_t buf[MESSAGELENGTH];
-    memset(buf, 0, sizeof(buf));
-    uint8_t len = sizeof(buf);
+void loop() {
+  // Check if user input is available
+  if (Serial.available() > 0) {
+    // Read the user input from the serial monitor
+    String inputText = Serial.readStringUntil('\n');
+    inputText.trim();  // Remove extra spaces and newline characters
 
-    if (rf95.available()) {
-      if (rf95.recv(buf, &len)) {
-        digitalWrite(LED_PIN, HIGH);  // Indicate reception
+    // Create the BLAKE2s hash object
+    BLAKE2s hashObject;
 
-        // Null-terminate the received message
-        char receivedStr[MESSAGELENGTH + 1];
-        strncpy(receivedStr, (char*)buf, len);
-        receivedStr[len] = '\0';
+    // Create a buffer to store the hash result (32 bytes)
+    uint8_t hashResult[32];
+    uint8_t storedHash[32];
 
-        // Extract fields including the encrypted message
-        // Expected format: "%d %d %d %d %d %d %s"
-        int SEQ, TYPE, TAGID, RELAY, TTL, RSSI;
-        char encryptedHex[128];  // Adjust size as needed
+    // If EEPROM is empty, take the input as the seed for the encryption key
+    if (!checkEEPROMForData()) {
+      // Update the hash with the user-provided seed
+      hashObject.update((const uint8_t*)inputText.c_str(), inputText.length());
 
-        int parsed = sscanf(receivedStr, "%d %d %d %d %d %d %s",
-                            &SEQ, &TYPE, &TAGID, &RELAY, &TTL, &RSSI, encryptedHex);
+      // Finalize the hash to get the result
+      hashObject.finalize(hashResult, sizeof(hashResult));
 
-        if (parsed < 7) {
-          Serial.println(F("Received message format incorrect."));
-          digitalWrite(LED_PIN, LOW);
-          continue;
+      // Store the hashed seed in EEPROM
+      writeHashToEEPROM(hashResult);
+      Serial.println(F("Encryption key seed stored in EEPROM."));
+    } else {
+      if (inputText.equalsIgnoreCase("clear")) {
+        // If the user types "clear", erase the EEPROM
+        clearEEPROM();
+      } else {
+        // Update the hash with the user-provided password
+        hashObject.update((const uint8_t*)inputText.c_str(), inputText.length());
+        hashObject.finalize(hashResult, sizeof(hashResult));
+        readHashFromEEPROM(storedHash);
+
+        if (compareHashes(hashResult, storedHash, HASH_SIZE)) {
+          Serial.println(F("Authentication successful."));
+          Serial.println(F("Please enter a message to encrypt (type 'done' when finished):"));
+
+          String message;
+          uint8_t address = 0; // Start writing to EEPROM at this address
+
+          // Continuously read user input until 'done' is typed
+          while (true) {
+            if (Serial.available() > 0) {
+              String line = Serial.readStringUntil('\n');
+              line.trim();
+              
+              if (line.equalsIgnoreCase("done")) {
+                break; // Exit loop if 'done' is typed
+              }
+
+              // Write the line to EEPROM
+              for (size_t i = 0; i < line.length() && address < EEPROM.length(); i++) {
+                EEPROM.write(address++, line[i]); // Store each character in EEPROM
+              }
+              EEPROM.write(address++, '\0'); // Null-terminate to mark end of the message
+            }
+          }
+
+          // Reset address to read back from EEPROM
+          address = 0;
+
+          // Read the key from EEPROM for encryption
+          byte key[32];
+          readKeyFromEEPROM(key);
+
+          // Initialize ChaChaPoly with the stored key and nonce
+          chachaPoly.setKey(key, sizeof(key));
+          chachaPoly.setIV(nonce, sizeof(nonce));
+
+          // Loop through EEPROM until we hit the null terminator
+          while (address < EEPROM.length()) {
+            // Read a message from EEPROM
+            String messageChunk;
+            char c;
+            while ((c = EEPROM.read(address++)) != '\0') {
+              if (address >= EEPROM.length()) break; // Prevent out-of-bounds
+              messageChunk += c;
+            }
+
+            // If there's a message chunk to encrypt
+            if (messageChunk.length() > 0) {
+              // Encrypt the message chunk
+              size_t len = messageChunk.length();
+              chachaPoly.encrypt(ciphertext, reinterpret_cast<const uint8_t*>(messageChunk.c_str()), len);
+              chachaPoly.computeTag(tag, sizeof(tag));
+
+              // Convert ciphertext to hex string for the message
+              char hexCiphertext[MESSAGELENGTH * 2 + 1];
+              for (size_t i = 0; i < len; ++i) {
+                sprintf(&hexCiphertext[i * 2], "%02x", ciphertext[i]);
+              }
+              hexCiphertext[len * 2] = '\0'; // Null-terminate the string
+
+              // Prepare to transmit the message
+              uint8_t buf[MESSAGELENGTH];
+              SEQ++;
+
+              // Create the message
+              char str[MESSAGELENGTH];
+              snprintf(str, sizeof(str), "%5d %5d %5d %5d %5d %5d %s", SEQ, TYPE, TAGID, RELAYID, TTL, thisRSSI, hexCiphertext);
+
+              // Ensure the buffer is large enough and properly null-terminated
+              memset(buf, 0, sizeof(buf)); // Clear the buffer first
+              strncpy((char*)buf, str, sizeof(buf) - 1);
+              buf[sizeof(buf) - 1] = '\0'; // Null-terminate
+
+              rf95.setModeIdle(); // Ensure channel is idle
+              while (rf95.isChannelActive()) {
+                delay(CSMATIME);
+                Serial.println(F("Tag node looping on isChannelActive()")); // DEBUG
+              }
+
+              // Transmit the message
+              Serial.print(F("Transmitted message: "));
+              Serial.println((char*)buf); // DEBUG
+              rf95.send(buf, strlen((char*)buf));
+              rf95.waitPacketSent();
+              delay(TXINTERVAL);
+            }
+          }
+        } else {
+          Serial.println(F("Authentication failed. Hash does not match."));
         }
-
-        Serial.print(F("Seq: ")); Serial.println(SEQ);
-        Serial.print(F("Type: ")); Serial.println(TYPE);
-        Serial.print(F("Tag: ")); Serial.println(TAGID);
-        Serial.print(F("Relay: ")); Serial.println(RELAY);
-        Serial.print(F("TTL: ")); Serial.println(TTL);
-        Serial.print(F("RSSI: ")); Serial.println(RSSI);
-        Serial.print(F("Encrypted Message (Hex): ")); Serial.println(encryptedHex);
-
-        // Convert hex string back to bytes
-        int encryptedLength = strlen(encryptedHex) / 2;
-        byte encryptedBytes[MESSAGELENGTH];
-        memset(encryptedBytes, 0, sizeof(encryptedBytes));
-        hexStringToBytes(encryptedHex, encryptedBytes, encryptedLength);
-
-        // Read the key from EEPROM
-        byte key[32];
-        readKeyFromEEPROM(key);
-
-        // Initialize ChaChaPoly with the key and nonce
-        chachaPoly.setKey(key, sizeof(key));
-        chachaPoly.setIV(nonce, sizeof(nonce));
-
-        // Decrypt the message
-        chachaPoly.decrypt((uint8_t*)decryptedMessage, encryptedBytes, encryptedLength);
-        decryptedMessage[encryptedLength] = '\0';  // Null-terminate
-
-        // Print the decrypted message
-        Serial.print(F("Decrypted Message: "));
-        Serial.println(decryptedMessage);
-
-        digitalWrite(LED_PIN, LOW);  // Reset LED
-        delay(1000);  // Short delay to avoid flooding
       }
     }
-  }
+
+    // Prompt for the next action
+    if (checkEEPROMForData()) {
+      Serial.println(F("Please type your password to authenticate or 'clear' to erase EEPROM."));
+    } else {
+      Serial.println(F("EEPROM is empty. Please enter a seed for your encryption key:"));
+    }
+    delay(500);  // Small delay before reading next input
+  }
 }
