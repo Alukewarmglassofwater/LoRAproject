@@ -8,7 +8,7 @@
 // EEPROM Configuration
 #define HASH_EEPROM_START 0
 #define HASH_SIZE 32
-#define MESSAGELENGTH 64       // Must match the transmitter's MESSAGELENGTH
+#define MESSAGELENGTH 64  // Must match the transmitter's MESSAGELENGTH
 
 // LoRa Configuration
 #define RF95_FREQ 915.0
@@ -57,7 +57,7 @@ void setup() {
   // Initialize LoRa
   if (!rf95.init()) {
     Serial.println(F("LoRa receiver initialization failed"));
-    while (1); // Halt if LoRa fails to initialize
+    while (1);  // Halt if LoRa fails to initialize
   }
 
   rf95.setFrequency(RF95_FREQ);
@@ -102,14 +102,12 @@ void loop() {
       // Prompt to wait for messages
       Serial.println(F("Waiting for message..."));
       listenForMessages();  // Start listening for incoming messages
-    }
-    else {
+    } else {
       // EEPROM is populated: user needs to authenticate or clear EEPROM
       if (inputText.equalsIgnoreCase("clear")) {
         clearEEPROM();
         checkEEPROMState();  // Re-prompt after clearing EEPROM
-      }
-      else {
+      } else {
         // Authenticate user
         hashObject.update((const uint8_t*)inputText.c_str(), inputText.length());
         hashObject.finalize(hashResult, sizeof(hashResult));
@@ -139,8 +137,7 @@ void loop() {
           Serial.println(F("Authentication successful."));
           Serial.println(F("Waiting for message..."));
           listenForMessages();  // Start listening for incoming messages
-        }
-        else {
+        } else {
           Serial.println(F("Authentication failed."));
           checkEEPROMState();  // Re-prompt after failed authentication
         }
@@ -211,8 +208,7 @@ void readKeyFromEEPROM(byte* key) {
 void checkEEPROMState() {
   if (checkEEPROMForData()) {
     Serial.println(F("EEPROM contains data. Please type your password to authenticate or 'clear' to erase EEPROM."));
-  }
-  else {
+  } else {
     Serial.println(F("EEPROM is empty. Please enter a seed for your encryption key:"));
   }
 }
@@ -228,10 +224,18 @@ void listenForMessages() {
       if (rf95.recv(buf, &len)) {
         digitalWrite(LED_PIN, HIGH);  // Indicate reception
 
+        // Print the length of the received message
+        Serial.print(F("Length of Received Message: "));
+        Serial.println(len);
+
         // Null-terminate the received message
         char receivedStr[MESSAGELENGTH + 1];
         strncpy(receivedStr, (char*)buf, len);
         receivedStr[len] = '\0';
+
+        // Print the raw received message
+        Serial.print(F("Raw Received Message: "));
+        Serial.println(receivedStr);
 
         // Extract fields including the encrypted message
         // Expected format: "%d %d %d %d %d %d %s"
@@ -240,6 +244,9 @@ void listenForMessages() {
 
         int parsed = sscanf(receivedStr, "%d %d %d %d %d %d %s",
                             &SEQ, &TYPE, &TAGID, &RELAY, &TTL, &RSSI, encryptedHex);
+
+        // Print the expected message format
+        Serial.println(F("Expected message format: <SEQ> <TYPE> <TAGID> <RELAY> <TTL> <RSSI> <EncryptedHex>"));
 
         if (parsed < 7) {
           Serial.println(F("Received message format incorrect."));
