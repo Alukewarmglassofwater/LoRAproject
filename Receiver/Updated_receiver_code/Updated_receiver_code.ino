@@ -8,7 +8,7 @@
 // EEPROM Configuration
 #define HASH_EEPROM_START 0
 #define HASH_SIZE 32
-#define MESSAGELENGTH 64       // Must match the transmitter's MESSAGELENGTH
+#define MESSAGELENGTH 83       // Must match the transmitter's MESSAGELENGTH
 
 // LoRa Configuration
 #define RF95_FREQ 915.0
