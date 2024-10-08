@@ -1,4 +1,3 @@
-//working - do not change
 #include <EEPROM.h>
 #include <SPI.h>
 #include <RH_RF95.h>
@@ -10,14 +9,14 @@
 #define HASH_EEPROM_START 0    // EEPROM start address to store the hash
 #define HASH_SIZE 32           // Hash size is 32 bytes
 #define MAX_MESSAGE_LENGTH 13  // Maximum plaintext message length for each chunk
-#define MESSAGELENGTH 83      // Total message buffer length for transmission
+#define MESSAGELENGTH 83       // Total message buffer length for transmission
 #define TXINTERVAL 5000        // Interval between transmissions
 #define CSMATIME 10            // CSMA backoff time
 
 // Singleton instance of radio driver
 RH_RF95 rf95;
 uint8_t led = 13; // Define LED pin
-//DDON NOT CHANGE
+
 // Message fields
 uint8_t SEQ = 0;  // Sequence number
 uint8_t TYPE = 0; // Message type
@@ -32,7 +31,7 @@ byte nonce[12] = {
   0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
   0x12, 0x34, 0x56, 0x78
 };
-//DO NOT CHANGE
+
 ChaChaPoly chachaPoly;
 byte ciphertext[MESSAGELENGTH];  // Buffer to hold encrypted data
 byte tag[16]; // Buffer for authentication tag
@@ -118,8 +117,11 @@ void transmitMessageChunks(const String& message) {
     uint8_t buf[MESSAGELENGTH];
     SEQ++;
 
+    // Set STOP field: 0 for ongoing messages, 1 for the last message
+    uint8_t STOP = (chunkIndex == totalChunks - 1) ? 1 : 0;
+
     // Create the message with metadata and encrypted chunk
-    snprintf((char*)buf, MESSAGELENGTH, "%5d %5d %5d %5d %5d %5d %5d %s", SEQ, TYPE, TAGID, RELAYID, TTL, thisRSSI, DEST_NODE, hexCiphertext);
+    snprintf((char*)buf, MESSAGELENGTH, "%d %d %d %d %d %d %d %d %s", SEQ, TYPE, TAGID, RELAYID, TTL, thisRSSI, DEST_NODE, STOP, hexCiphertext);
 
     rf95.setModeIdle(); // Ensure channel is idle
     while (rf95.isChannelActive()) {
