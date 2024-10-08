@@ -66,7 +66,7 @@ void setup() {
     // Initialize Serial and LED
     pinMode(LED_PIN, OUTPUT);
     Serial.begin(9600);
-    Serial.println(F("Receiver Version 1"));
+    // Serial.println(F("Receiver Version 1"));
 
     // Read the node number from EEPROM
     readNodeNumberFromEEPROM();
@@ -109,15 +109,15 @@ void loop() {
             // Prompt for node number
             promptForNodeNumber();
 
-            // Debug: Print the stored hash
-            Serial.print(F("Stored seed hash as 32-byte hex array: { "));
-            for (size_t i = 0; i < HASH_SIZE; i++) {
-                if (i != 0) Serial.print(F(", "));
-                Serial.print(F("0x"));
-                if (hashResult[i] < 0x10) Serial.print(F("0"));
-                Serial.print(hashResult[i], HEX);
-            }
-            Serial.println(F(" };"));
+            // // Debug: Print the stored hash
+            // Serial.print(F("Stored seed hash as 32-byte hex array: { "));
+            // for (size_t i = 0; i < HASH_SIZE; i++) {
+            //     if (i != 0) Serial.print(F(", "));
+            //     Serial.print(F("0x"));
+            //     if (hashResult[i] < 0x10) Serial.print(F("0"));
+            //     Serial.print(hashResult[i], HEX);
+            // }
+            // Serial.println(F(" };"));
 
             // Prompt to wait for messages
             Serial.print(F("Current Node Number: "));
@@ -136,24 +136,24 @@ void loop() {
 
                 readHashFromEEPROM(storedHash);
 
-                // Debug: Print both hashes to compare
-                Serial.print(F("Stored Hash: { "));
-                for (size_t i = 0; i < HASH_SIZE; i++) {
-                    if (i != 0) Serial.print(F(", "));
-                    Serial.print(F("0x"));
-                    if (storedHash[i] < 0x10) Serial.print(F("0"));
-                    Serial.print(storedHash[i], HEX);
-                }
-                Serial.println(F(" };"));
+                // // Debug: Print both hashes to compare
+                // Serial.print(F("Stored Hash: { "));
+                // for (size_t i = 0; i < HASH_SIZE; i++) {
+                //     if (i != 0) Serial.print(F(", "));
+                //     Serial.print(F("0x"));
+                //     if (storedHash[i] < 0x10) Serial.print(F("0"));
+                //     Serial.print(storedHash[i], HEX);
+                // }
+                // Serial.println(F(" };"));
 
-                Serial.print(F("Entered Hash: { "));
-                for (size_t i = 0; i < HASH_SIZE; i++) {
-                    if (i != 0) Serial.print(F(", "));
-                    Serial.print(F("0x"));
-                    if (hashResult[i] < 0x10) Serial.print(F("0"));
-                    Serial.print(hashResult[i], HEX);
-                }
-                Serial.println(F(" };"));
+                // Serial.print(F("Entered Hash: { "));
+                // for (size_t i = 0; i < HASH_SIZE; i++) {
+                //     if (i != 0) Serial.print(F(", "));
+                //     Serial.print(F("0x"));
+                //     if (hashResult[i] < 0x10) Serial.print(F("0"));
+                //     Serial.print(hashResult[i], HEX);
+                // }
+                // Serial.println(F(" };"));
 
                 if (compareHashes(hashResult, storedHash, HASH_SIZE)) {
                     Serial.println(F("Authentication successful."));
@@ -308,14 +308,14 @@ void listenForMessages() {
 
                 // Debug print the message fields
                 Serial.print(F("Received - Seq: ")); Serial.println(SEQ);
-                Serial.print(F("Type: ")); Serial.println(TYPE);
-                Serial.print(F("Tag: ")); Serial.println(TAGID);
-                Serial.print(F("Relay: ")); Serial.println(RELAY);
-                Serial.print(F("TTL: ")); Serial.println(TTL);
-                Serial.print(F("RSSI: ")); Serial.println(RSSI);
+                // Serial.print(F("Type: ")); Serial.println(TYPE);
+                // Serial.print(F("Tag: ")); Serial.println(TAGID);
+                // Serial.print(F("Relay: ")); Serial.println(RELAY);
+                // Serial.print(F("TTL: ")); Serial.println(TTL);
+                // Serial.print(F("RSSI: ")); Serial.println(RSSI);
                 Serial.print(F("DEST_NODE: ")); Serial.println(DEST_NODE);
                 Serial.print(F("STOP: ")); Serial.println(STOP);
-                Serial.print(F("Encrypted Message (Hex): ")); Serial.println(encryptedHex);
+                Serial.print(F("Received Encrypted Message (Hex): ")); Serial.println(encryptedHex);
 
                 // Convert hex string back to bytes
                 int encryptedLength = strlen(encryptedHex) / 2; // Correct length
@@ -344,9 +344,27 @@ void listenForMessages() {
                     Serial.print(F("Decrypted Message: "));
                     Serial.println(decryptedMessage);
                 } else {
+                    Serial.println(F("MESSAGE NOT INTENDED FOR NODE - ACTING AS RELAY"));
                     Serial.println(F("##Message display for assignment purposes only##"));
                     Serial.print(F("Decrypted Message: "));
                     Serial.println(decryptedMessage);
+
+                  // Re-encrypt the entire decrypted message
+                    byte ciphertext[encryptedLength]; // Buffer for re-encryption
+                    chachaPoly.encrypt(ciphertext, (uint8_t*)decryptedMessage, encryptedLength);
+
+                    // Convert ciphertext to hex string for transmission
+                    char hexCiphertext[encryptedLength * 2 + 1]; // +1 for null terminator
+                    for (int i = 0; i < encryptedLength; ++i) {
+                        sprintf(&hexCiphertext[i * 2], "%02x", ciphertext[i]);
+                    }
+                    hexCiphertext[encryptedLength * 2] = '\0'; // Null-terminate the string
+
+                    // Transmit the re-encrypted message
+                    transmitMessage(hexCiphertext);
+                    Serial.println(F("~~Message forwarded~~"));
+
+                
                 }
 
                 // If STOP is 1, display the stored message and clear it
@@ -379,7 +397,7 @@ void transmitMessage(const char* message) {
     // Transmit the message
     rf95.send(buf, strlen((char*)buf));
     rf95.waitPacketSent();
-    Serial.print(F("Forwarding message: "));
+    Serial.print(F("Forwarding re-encrypted message: (Hex) "));
     Serial.println(message);
 }
 
