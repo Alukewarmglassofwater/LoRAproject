@@ -191,8 +191,8 @@ void loop() {
         if (compareHashes(hashResult, storedHash, HASH_SIZE)) {
           Serial.println(F("Authentication successful."));
 
-          // Prompt for destination node input
-          Serial.println(F("Enter intended destination node. 2-98 is valid. 99 will forward to all nodes in the network."));
+          // Prompt for destination node input 
+          Serial.println(F("Enter intended destination node. 2-99 is valid:")); //1 is the transmitter
 
           // Wait for the destination node input
           while (!Serial.available()) {
