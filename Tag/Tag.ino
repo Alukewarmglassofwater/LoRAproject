@@ -15,6 +15,13 @@ int RELAYID = 0; // Relay ID
 int TTL = 5;     // Time to live
 int thisRSSI = 0;
 int firstIteration = 0; // First iteration flag
+uint8_t hashValue[32] = {
+    0x32, 0x7E, 0x7E, 0x38, 0x21, 0xF5, 0xF6, 0xD3,
+    0x3C, 0x09, 0x01, 0x37, 0xF9, 0x79, 0xBF, 0x48,
+    0xEE, 0x62, 0xE9, 0x05, 0x1C, 0x16, 0x10, 0xE1,
+    0xD6, 0x46, 0x8E, 0xCB, 0x3C, 0x67, 0xA1, 0x24
+};
+// password = "admin"
 
 // Encryption details
 const char plaintext[] = "Hello, World!";
@@ -71,6 +78,8 @@ void setup() {
     sprintf(&hexCiphertext[i * 2], "%02x", ciphertext[i]);
   }
   hexCiphertext[sizeof(ciphertext) * 2] = '\0'; // Null-terminate the string
+
+  
 }
 
 void loop() {
