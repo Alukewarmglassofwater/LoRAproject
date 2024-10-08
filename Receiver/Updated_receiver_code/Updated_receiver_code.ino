@@ -1,3 +1,4 @@
+//DO NOT CHANGE
 #include <EEPROM.h>
 #include <SPI.h>
 #include <RH_RF95.h>
@@ -7,6 +8,7 @@
 
 // EEPROM Configuration
 #define HASH_EEPROM_START 0
+#define NODE_NUM_EEPROM_ADDRESS 64  // New address to store the node number
 #define HASH_SIZE 32
 #define MESSAGELENGTH 83       // Must match the transmitter's MESSAGELENGTH
 
@@ -37,6 +39,8 @@ ChaChaPoly chachaPoly;
 char encryptedMessageHex[128];
 char decryptedMessage[128];
 
+int NODE_NUM = 0;  // Variable to store the node number
+
 // Function Prototypes
 void writeHashToEEPROM(uint8_t* hashResult);
 void readHashFromEEPROM(uint8_t* hashResult);
@@ -47,12 +51,19 @@ void hexStringToBytes(const char* hexString, byte* byteArray, int byteArraySize)
 void listenForMessages();
 void readKeyFromEEPROM(byte* key);
 void checkEEPROMState();
+void promptForNodeNumber();
+void readNodeNumberFromEEPROM();
+void writeNodeNumberToEEPROM(int nodeNum);
+void transmitMessage(const char* message); // New function to transmit messages
 
 void setup() {
   // Initialize Serial and LED
   pinMode(LED_PIN, OUTPUT);
   Serial.begin(9600);
   Serial.println(F("Receiver Version 1"));
+
+  // Read the node number from EEPROM
+  readNodeNumberFromEEPROM();
 
   // Initialize LoRa
   if (!rf95.init()) {
@@ -89,6 +100,9 @@ void loop() {
       writeHashToEEPROM(hashResult);
       Serial.println(F("Encryption key seed stored in EEPROM."));
 
+      // Prompt for node number
+      promptForNodeNumber();
+
       // Debug: Print the stored hash
       Serial.print(F("Stored seed hash as 32-byte hex array: { "));
       for (size_t i = 0; i < HASH_SIZE; i++) {
@@ -100,6 +114,8 @@ void loop() {
       Serial.println(F(" };"));
 
       // Prompt to wait for messages
+      Serial.print(F("Current Node Number: "));
+      Serial.println(NODE_NUM);  // Display current node number
       Serial.println(F("Waiting for message..."));
       listenForMessages();  // Start listening for incoming messages
     }
@@ -137,6 +153,8 @@ void loop() {
 
         if (compareHashes(hashResult, storedHash, HASH_SIZE)) {
           Serial.println(F("Authentication successful."));
+          Serial.print(F("Current Node Number: "));
+          Serial.println(NODE_NUM);  // Display current node number
           Serial.println(F("Waiting for message..."));
           listenForMessages();  // Start listening for incoming messages
         }
@@ -149,6 +167,36 @@ void loop() {
 
     delay(500);  // Small delay before next input
   }
+}
+
+// Function to prompt for node number
+void promptForNodeNumber() {
+  while (true) {
+    Serial.print(F("Assign node number to this device. 2-99 is valid: "));
+    while (!Serial.available());  // Wait for user input
+    NODE_NUM = Serial.parseInt();
+    if (NODE_NUM >= 2 && NODE_NUM <= 98) {
+      writeNodeNumberToEEPROM(NODE_NUM); // Store the node number in EEPROM
+      Serial.print(F("Node number assigned: "));
+      Serial.println(NODE_NUM);
+      break;
+    } else {
+      Serial.println(F("Invalid node number. Please enter a valid number."));
+    }
+  }
+}
+
+// Function to read the node number from EEPROM
+void readNodeNumberFromEEPROM() {
+  NODE_NUM = EEPROM.read(NODE_NUM_EEPROM_ADDRESS);
+  if (NODE_NUM < 2 || NODE_NUM > 98) {
+    NODE_NUM = 0;  // Reset to 0 if the value is invalid
+  }
+}
+
+// Function to write the node number to EEPROM
+void writeNodeNumberToEEPROM(int nodeNum) {
+  EEPROM.write(NODE_NUM_EEPROM_ADDRESS, nodeNum);
 }
 
 // Function to write hash to EEPROM
@@ -210,7 +258,9 @@ void readKeyFromEEPROM(byte* key) {
 // Function to check EEPROM state and prompt user accordingly
 void checkEEPROMState() {
   if (checkEEPROMForData()) {
-    Serial.println(F("EEPROM contains data. Please type your password to authenticate or 'clear' to erase EEPROM."));
+    Serial.print(F("EEPROM contains data. Current Node Number: "));
+    Serial.println(NODE_NUM);
+    Serial.println(F("Please type your password to authenticate or 'clear' to erase EEPROM."));
   }
   else {
     Serial.println(F("EEPROM is empty. Please enter a seed for your encryption key:"));
@@ -228,20 +278,27 @@ void listenForMessages() {
       if (rf95.recv(buf, &len)) {
         digitalWrite(LED_PIN, HIGH);  // Indicate reception
 
+        // Ensure we don't exceed the buffer
+        if (len >= MESSAGELENGTH) {
+          Serial.println(F("Received message too long!"));
+          digitalWrite(LED_PIN, LOW);
+          continue; // Skip this message
+        }
+
         // Null-terminate the received message
         char receivedStr[MESSAGELENGTH + 1];
         strncpy(receivedStr, (char*)buf, len);
         receivedStr[len] = '\0';
 
         // Extract fields including the encrypted message
-        // Expected format: "%d %d %d %d %d %d %s"
-        int SEQ, TYPE, TAGID, RELAY, TTL, RSSI;
+        int SEQ, TYPE, TAGID, RELAY, TTL, RSSI, DEST_NODE;
         char encryptedHex[128];  // Adjust size as needed
 
-        int parsed = sscanf(receivedStr, "%d %d %d %d %d %d %s",
-                            &SEQ, &TYPE, &TAGID, &RELAY, &TTL, &RSSI, encryptedHex);
+        // Correct the sscanf format to match the sender's format
+        int parsed = sscanf(receivedStr, "%d %d %d %d %d %d %d %s",
+                            &SEQ, &TYPE, &TAGID, &RELAY, &TTL, &RSSI, &DEST_NODE, encryptedHex);
 
-        if (parsed < 7) {
+        if (parsed < 8) {
           Serial.println(F("Received message format incorrect."));
           digitalWrite(LED_PIN, LOW);
           continue;
@@ -253,12 +310,12 @@ void listenForMessages() {
         Serial.print(F("Relay: ")); Serial.println(RELAY);
         Serial.print(F("TTL: ")); Serial.println(TTL);
         Serial.print(F("RSSI: ")); Serial.println(RSSI);
+        Serial.print(F("DEST_NODE: ")); Serial.println(DEST_NODE);
         Serial.print(F("Encrypted Message (Hex): ")); Serial.println(encryptedHex);
 
         // Convert hex string back to bytes
         int encryptedLength = strlen(encryptedHex) / 2;
-        byte encryptedBytes[MESSAGELENGTH];
-        memset(encryptedBytes, 0, sizeof(encryptedBytes));
+        byte encryptedBytes[encryptedLength];
         hexStringToBytes(encryptedHex, encryptedBytes, encryptedLength);
 
         // Read the key from EEPROM
@@ -270,16 +327,61 @@ void listenForMessages() {
         chachaPoly.setIV(nonce, sizeof(nonce));
 
         // Decrypt the message
-        chachaPoly.decrypt((uint8_t*)decryptedMessage, encryptedBytes, encryptedLength);
+        chachaPoly.decrypt((uint8_t*)decryptedMessage, encryptedBytes, encryptedLength);        
+
+
         decryptedMessage[encryptedLength] = '\0';  // Null-terminate
 
-        // Print the decrypted message
-        Serial.print(F("Decrypted Message: "));
-        Serial.println(decryptedMessage);
+
+
+        // Check DEST_NODE and respond accordingly
+        if (DEST_NODE == NODE_NUM) {
+          Serial.println(F("Message received for this node."));
+          Serial.print(F("Decrypted Message: "));
+          Serial.println(decryptedMessage);
+        } else {
+          Serial.println(F("##Message display for assignment purposes only##"));
+          Serial.print(F("Decrypted Message: "));
+          Serial.println(decryptedMessage);
+
+          // Re-encrypt the message
+          byte ciphertext[encryptedLength]; // Buffer for re-encryption
+          chachaPoly.encrypt(ciphertext, (uint8_t*)decryptedMessage, encryptedLength);
+
+          // Convert ciphertext to hex string for transmission
+          char hexCiphertext[encryptedLength * 2 + 1]; // +1 for null terminator
+          for (int i = 0; i < encryptedLength; ++i) {
+            sprintf(&hexCiphertext[i * 2], "%02x", ciphertext[i]);
+          }
+          hexCiphertext[encryptedLength * 2] = '\0'; // Null-terminate the string
+
+          // Transmit the re-encrypted message
+          transmitMessage(hexCiphertext);
+        }
 
         digitalWrite(LED_PIN, LOW);  // Reset LED
         delay(1000);  // Short delay to avoid flooding
+      } else {
+        Serial.println(F("Failed to receive message."));
       }
     }
+    delay(100);  // Small delay to avoid flooding the loop
   }
+}
+
+// Function to transmit messages
+void transmitMessage(const char* message) {
+  uint8_t buf[MESSAGELENGTH];
+  snprintf((char*)buf, MESSAGELENGTH, "%s", message);
+  
+  rf95.setModeIdle(); // Ensure channel is idle
+  while (rf95.isChannelActive()) {
+    delay(CSMATIME);
+  }
+
+  // Transmit the message
+  rf95.send(buf, strlen((char*)buf));
+  rf95.waitPacketSent();
+  Serial.print(F("Forwarding message: "));
+  Serial.println(message);
 }
