@@ -313,6 +313,7 @@ void listenForMessages() {
                 byte computedTag[16];
                 chachaPoly.computeTag(computedTag, sizeof(computedTag)); // Compute the tag for the decrypted message
 
+
                 // Check if the computed tag matches the received tag
                 if (memcmp(receivedTag, computedTag, sizeof(computedTag)) != 0) {
                     Serial.println(F("CORRUPTED MESSAGE"));
@@ -336,6 +337,9 @@ void listenForMessages() {
                     byte ciphertext[encryptedLength]; // Buffer for re-encryption
                     chachaPoly.encrypt(ciphertext, (uint8_t*)decryptedMessage, encryptedLength);
 
+                    // Clear decrypted message from memory after use
+                    memset(decryptedMessage, 0, sizeof(decryptedMessage));
+
                     // Convert ciphertext to hex string for transmission (reverse of above decrypted text storage process)
                     char hexCiphertext[encryptedLength * 2 + 1]; // +1 for null terminator
                     for (int i = 0; i < encryptedLength; ++i) {
@@ -346,7 +350,7 @@ void listenForMessages() {
 
                     // Transmit the re-encrypted message
                     transmitMessage(hexCiphertext);
-                    Serial.println(F("~~Message forwarded~~"));
+                    Serial.println(F("~Message forwarded~"));
 
                     }
 
