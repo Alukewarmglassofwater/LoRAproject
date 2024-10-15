@@ -1,3 +1,4 @@
+// Working code
 #include <EEPROM.h>
 #include <SPI.h>
 #include <RH_RF95.h>
@@ -6,10 +7,10 @@
 #include <Crypto.h>
 #include <BLAKE2s.h>
 
-#define HASH_EEPROM_START 0    // EEPROM start address to store the hash
+#define HASH_EEPROM_START 0    // Start position of hash in EEPROM
 #define HASH_SIZE 32           // Hash size is 32 bytes
-#define MAX_MESSAGE_LENGTH 13  // Maximum plaintext message length for each chunk
-#define MESSAGELENGTH 83       // Total message buffer length for transmission
+#define MAX_MESSAGE_LENGTH 13  // Chunked messages size
+#define MESSAGELENGTH 83       // Message buffe size
 #define TXINTERVAL 5000        // Interval between transmissions
 #define CSMATIME 10            // CSMA backoff time
 
@@ -90,26 +91,27 @@ void transmitMessageChunks(const String& message) {
   int messageLength = message.length();
   int totalChunks = (messageLength + MAX_MESSAGE_LENGTH - 1) / MAX_MESSAGE_LENGTH;
 
+  // iterate for the total message length
   for (int chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-    String chunk = message.substring(chunkIndex * MAX_MESSAGE_LENGTH, (chunkIndex + 1) * MAX_MESSAGE_LENGTH);
+    String chunk = message.substring(chunkIndex * MAX_MESSAGE_LENGTH, (chunkIndex + 1) * MAX_MESSAGE_LENGTH); // create a substring (chunk) of MAX_MESSAGE_LENGTH
     
     // Prepare encryption key from EEPROM
     byte key[32];
     readKeyFromEEPROM(key);
 
     // Initialize ChaChaPoly with the stored key and nonce
-    chachaPoly.setKey(key, sizeof(key));
-    chachaPoly.setIV(nonce, sizeof(nonce));
+    chachaPoly.setKey(key, sizeof(key)); //sets key
+    chachaPoly.setIV(nonce, sizeof(nonce)); //sets nonce
 
     // Encrypt the message chunk
     size_t len = chunk.length();
-    chachaPoly.encrypt(ciphertext, reinterpret_cast<const uint8_t*>(chunk.c_str()), len);
+    chachaPoly.encrypt(ciphertext, reinterpret_cast<const uint8_t*>(chunk.c_str()), len); // encrypt message into ciphertext
     chachaPoly.computeTag(tag, sizeof(tag));
 
     // Convert ciphertext to hex string for the message
-    char hexCiphertext[len * 2 + 1];  // +1 for null terminator
+    char hexCiphertext[len * 2 + 1];  // +1 for null terminator 
     for (size_t i = 0; i < len; ++i) {
-      sprintf(&hexCiphertext[i * 2], "%02x", ciphertext[i]);
+      sprintf(&hexCiphertext[i * 2], "%02x", ciphertext[i]); //convert each element in ciphertext into hex string (AA -> 0xAA)
     }
     hexCiphertext[len * 2] = '\0'; // Null-terminate the string
 
