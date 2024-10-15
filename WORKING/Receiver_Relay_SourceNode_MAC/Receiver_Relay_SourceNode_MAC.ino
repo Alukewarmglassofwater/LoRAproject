@@ -22,12 +22,12 @@
 #define SPREADING_FACTOR 12 // Max range for short messages. Ideal for mining scenario. (7- 12 range) Less power, less data, longer distance, better resistance to interference. 
 #define CSMATIME 10 // 10 ms gap upon sensing medium is clear to send. 
 
-// Singleton instance of radio driver
+// Singleton instance of radio driver 
 RH_RF95 rf95;
 
 const uint8_t LED_PIN = 13; // Sets LED to correct pin
 
-// 12 Byte Nonce. Used in ChaChaPoly algorithm
+// 12 Byte static Nonce
 const byte nonce[12] = {
     0x12, 0x34, 0x56, 0x78,
     0x90, 0xab, 0xcd, 0xef,
