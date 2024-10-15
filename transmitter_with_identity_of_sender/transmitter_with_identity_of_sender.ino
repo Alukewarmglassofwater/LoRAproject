@@ -22,7 +22,7 @@ uint8_t SEQ = 0;  // Sequence number
 uint8_t TYPE = 0; // Message type
 uint8_t TAGID = 1; // Identity of tag
 uint8_t RELAYID = 0; // Relay ID
-uint8_t S_NODE = 1;
+uint8_t S_NODE = 0;
 int thisRSSI = 0;
 int DEST_NODE = 0; // Destination node
 
