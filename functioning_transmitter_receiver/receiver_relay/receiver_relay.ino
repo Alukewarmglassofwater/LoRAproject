@@ -241,7 +241,7 @@ bool compareHashes(uint8_t* hash1, uint8_t* hash2, size_t length) {
 }
 
 // Convert hex string to bytes
-void hexStringToBytes(const char* hexString, byte* byteArray, int byteArraySize) { //string to hex then hex to bytes in byteArray for storage. Instead of storing as 2 byte per character (0xAA) we store as 1 byte (AA).
+void hexStringToBytes(const char* hexString, byte* byteArray, int byteArraySize) { //string to hex then hex to bytes (byte array) in byteArray for storage. Instead of storing as 2 byte per character hex value (0xAA) we store as 1 byte per character (AA).
     for (int i = 0; i < byteArraySize; i++) {
         sscanf(&hexString[i * 2], "%2hhx", &byteArray[i]);
     }
@@ -290,11 +290,11 @@ void listenForMessages() {
 
                 // Extract fields, encrypted message and the STOP field so we know when the chunking process is complete
                 int SEQ, TYPE, TAGID, RELAY, TTL, RSSI, DEST_NODE, STOP;
-                char encryptedHex[128];  // Adjust size as needed
+                char encryptedHex[128]; //array for encrypted message to be received
 
-                // Update sscanf format to match the new sender's format with STOP. Some fields are not used in current implementation
+                //extract plain text messages 
                 int parsed = sscanf(receivedStr, "%d %d %d %d %d %d %d %d %s",
-                                    &SEQ, &TYPE, &TAGID, &RELAY, &TTL, &RSSI, &DEST_NODE, &STOP, encryptedHex);
+                                    &SEQ, &TYPE, &TAGID, &RELAY, &TTL, &RSSI, &DEST_NODE, &STOP, encryptedHex); 
 
                 if (parsed < 9) { // All 9 'sections' must be received. If not do below
                     Serial.println(F("Received message format incorrect."));
@@ -313,7 +313,7 @@ void listenForMessages() {
                 Serial.print(F("STOP: ")); Serial.println(STOP); //print STOP flag
                 Serial.print(F("Received Encrypted Message (Hex): ")); Serial.println(encryptedHex); 
 
-                // Convert hex string back to bytes
+                // Convert hex string back to bytes (memory optimisation)
                 int encryptedLength = strlen(encryptedHex) / 2;
                 byte encryptedBytes[encryptedLength];
                 hexStringToBytes(encryptedHex, encryptedBytes, encryptedLength);
@@ -323,13 +323,13 @@ void listenForMessages() {
                 readKeyFromEEPROM(key);
 
                 // Initialize ChaChaPoly with the key and nonce
-                chachaPoly.setKey(key, sizeof(key));
-                chachaPoly.setIV(nonce, sizeof(nonce));
+                chachaPoly.setKey(key, sizeof(key)); //sets key
+                chachaPoly.setIV(nonce, sizeof(nonce)); //sets nonce
 
                 // Decrypt the message
                 chachaPoly.decrypt((uint8_t*)decryptedMessage, encryptedBytes, encryptedLength);        
 
-                decryptedMessage[encryptedLength] = '\0';  // Null-terminate
+                decryptedMessage[encryptedLength] = '\0';  // Null-terminate decrypted message so compiler knows where the string ends
 
                 // Save the decrypted message to EEPROM
                 saveDecryptedMessageToEEPROM(decryptedMessage, encryptedLength); // Pass the length
@@ -349,10 +349,10 @@ void listenForMessages() {
                     byte ciphertext[encryptedLength]; // Buffer for re-encryption
                     chachaPoly.encrypt(ciphertext, (uint8_t*)decryptedMessage, encryptedLength);
 
-                    // Convert ciphertext to hex string for transmission
+                    // Convert ciphertext to hex string for transmission (reverse of above decrypted text storage process)
                     char hexCiphertext[encryptedLength * 2 + 1]; // +1 for null terminator
                     for (int i = 0; i < encryptedLength; ++i) {
-                        sprintf(&hexCiphertext[i * 2], "%02x", ciphertext[i]);
+                        sprintf(&hexCiphertext[i * 2], "%02x", ciphertext[i]); //convert each element in ciphertext byte array into hex string (AA -> 0xAA, easier to debug)
                     }
                     hexCiphertext[encryptedLength * 2] = '\0'; // Null-terminate the string
 
