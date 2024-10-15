@@ -259,12 +259,12 @@ void listenForMessages() {
                 receivedStr[len] = '\0';
 
                 // Extract fields, encrypted message and the STOP field
-                int SEQ, TYPE, TAGID, RELAY, TTL, RSSI, DEST_NODE, STOP;
+                int SEQ, TYPE, TAGID, RELAY, S_NODE, RSSI, DEST_NODE, STOP;
                 char encryptedHex[128]; // Array for encrypted message to be received
 
                 // Extract plain text messages 
                 int parsed = sscanf(receivedStr, "%d %d %d %d %d %d %d %d %s",
-                                    &SEQ, &TYPE, &TAGID, &RELAY, &TTL, &RSSI, &DEST_NODE, &STOP, encryptedHex); 
+                                    &SEQ, &TYPE, &TAGID, &RELAY, &S_NODE, &RSSI, &DEST_NODE, &STOP, encryptedHex); 
 
                 if (parsed < 9) { // All 9 'sections' must be received. If not do below
                     Serial.println(F("Received message format incorrect."));
@@ -272,7 +272,17 @@ void listenForMessages() {
                     continue;
                 }
 
+                 // Check if S_NODE is 1
+                if (S_NODE == 1) {
+                Serial.println(F("Message received from NODE 1"));
+
+
                 // Debug print the message fields
+                // Serial.print(F("Type: ")); Serial.println(TYPE);
+                // Serial.print(F("Tag: ")); Serial.println(TAGID);
+                // Serial.print(F("Relay: ")); Serial.println(RELAY);
+                Serial.print(F("S_NODE: ")); Serial.println(S_NODE);
+                // Serial.print(F("RSSI: ")); Serial.println(RSSI);
                 Serial.print(F("Received - Seq: ")); Serial.println(SEQ); // Print sequence number
                 Serial.print(F("DEST_NODE: ")); Serial.println(DEST_NODE); // Print destination node number
                 Serial.print(F("STOP: ")); Serial.println(STOP); // Print STOP flag
@@ -320,6 +330,24 @@ void listenForMessages() {
                         Serial.println(F("##Message display for assignment purposes only##"));
                         Serial.print(F("Decrypted Message: "));
                         Serial.println(decryptedMessage);
+                    
+
+                    // Re-encrypt the entire decrypted message
+                    byte ciphertext[encryptedLength]; // Buffer for re-encryption
+                    chachaPoly.encrypt(ciphertext, (uint8_t*)decryptedMessage, encryptedLength);
+
+                    // Convert ciphertext to hex string for transmission (reverse of above decrypted text storage process)
+                    char hexCiphertext[encryptedLength * 2 + 1]; // +1 for null terminator
+                    for (int i = 0; i < encryptedLength; ++i) {
+                        sprintf(&hexCiphertext[i * 2], "%02x", ciphertext[i]); //convert each element in ciphertext byte array into hex string (AA -> 0xAA, easier to debug)
+                    }
+
+                    hexCiphertext[encryptedLength * 2] = '\0'; // Null-terminate the string
+
+                    // Transmit the re-encrypted message
+                    transmitMessage(hexCiphertext);
+                    Serial.println(F("~~Message forwarded~~"));
+
                     }
 
                     // If STOP is 1, display the stored message and clear it
@@ -329,6 +357,11 @@ void listenForMessages() {
                         clearStoredMessage(); // Clear the stored message from EEPROM
                     }
                 }
+                
+              } else {
+                Serial.println(F("!MESSAGE SENT FROM UNAUTHORIZED SOURCE!"));
+
+              }
 
                 digitalWrite(LED_PIN, LOW);  // Reset LED
                 delay(1000);  // Short delay to avoid flooding
