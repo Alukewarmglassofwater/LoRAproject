@@ -382,16 +382,16 @@ void transmitMessage(const char* message) {
     uint8_t buf[MESSAGELENGTH];
     snprintf((char*)buf, MESSAGELENGTH, "%s", message);
     
-    rf95.setModeIdle(); // Ensure channel is idle
-    while (rf95.isChannelActive()) {
-        delay(CSMATIME);
+    rf95.setModeIdle(); // Set transceiver to idle state. 
+    while (rf95.isChannelActive()) { //if channel is busy run below code which adds a delay before transmission occurs
+        delay(CSMATIME); 
     }
 
     // Transmit the message
-    rf95.send(buf, strlen((char*)buf));
-    rf95.waitPacketSent();
-    Serial.print(F("Forwarding re-encrypted message: (Hex) "));
-    Serial.println(message);
+    rf95.send(buf, strlen((char*)buf)); //sends message
+    rf95.waitPacketSent(); //waits for transmission to be complete
+    Serial.print(F("Forwarding re-encrypted message: (Hex) ")); //prints to user
+    Serial.println(message); //prints the message that was sent
 }
 
 // Updated function to save decrypted messages to EEPROM
@@ -407,7 +407,7 @@ void saveDecryptedMessageToEEPROM(const char* message, int length) {
         }
     }
 
-    // If EEPROM is empty (filled with 0xFF), write the message at the start
+    // If EEPROM is empty (filled with 0xFF), write the message at the start of DECRYPTED_MESSAGE_EEPROM_START
     if (isEmpty) {
         for (int i = 0; i < length && (address < (DECRYPTED_MESSAGE_EEPROM_START + MAX_DECRYPTED_MESSAGE_LENGTH)); i++) {
             EEPROM.write(address++, message[i]);
@@ -423,7 +423,7 @@ void saveDecryptedMessageToEEPROM(const char* message, int length) {
             address++; // Move to the next address
         }
 
-        // Ensure we don't exceed the maximum allowed length
+        // Ensure don't exceed the maximum allowed length
         for (int i = 0; i < length && (address < (DECRYPTED_MESSAGE_EEPROM_START + MAX_DECRYPTED_MESSAGE_LENGTH)); i++) {
             EEPROM.write(address++, message[i]);
         }
@@ -432,7 +432,7 @@ void saveDecryptedMessageToEEPROM(const char* message, int length) {
     }
 }
 
-// New function to display the stored message
+//  display the stored message
 void displayStoredMessage() {
     char storedMessage[MAX_DECRYPTED_MESSAGE_LENGTH];
     int i = 0;
@@ -445,8 +445,8 @@ void displayStoredMessage() {
     }
     storedMessage[i] = '\0'; // Ensure the message is null-terminated
 
-    Serial.print(F("Stored Message: "));
-    Serial.println(storedMessage);
+    Serial.print(F("Stored Message: ")); //print
+    Serial.println(storedMessage); //print stored message. Should be call received string segments in one. 
 }
 
 // New function to clear only the stored decrypted messages in EEPROM
@@ -454,5 +454,5 @@ void clearStoredMessage() {
     for (int i = DECRYPTED_MESSAGE_EEPROM_START; i < DECRYPTED_MESSAGE_EEPROM_START + MAX_DECRYPTED_MESSAGE_LENGTH; i++) {
         EEPROM.write(i, 0xFF); // Set each byte to 0xFF to indicate empty
     }
-    Serial.println(F("Stored decrypted messages have been cleared."));
+    Serial.println(F("Stored decrypted messages have been cleared.")); //print to user
 }
