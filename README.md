@@ -19,3 +19,26 @@
 - Message Authentication, Memory Management, Chunking: Ronnie and Luke.
 - Project Leader: Jackson
 - Arduino Interface: Gajen
+
+### Quick Setup Instructions
+
+#### Hardware Setup:
+- Transmitter: Load the Transmitter code onto an Arduino with a LoRa shield.
+- Receiver/Relay: Load the Receiver/Relay code onto another Arduino with a LoRa shield.
+
+ #### Required Libraries:
+- Crypto: Provides Arduiono optimized ChaChaPoly encryption and Blake2s hashing.
+- RH_RF95.h (Radiohead): Interfaces with the LoRa shield.
+- SPI.h: Enables serial communication with the LoRa shield.
+- EEPROM.h: Manages EEPROM storage for password storage and verification.
+
+#### Initial Setup:
+- Transmitter: On first boot, if EEPROM is empty, the Transmitter will prompt for a password, hash it with Blake2s, and store it in EEPROM.
+- Receiver/Relay: On startup, the Receiver will prompt the user to set a node number and authenticate.
+
+#### Usage:
+- Transmitter: Enter the destination node and a message (up to 50 characters). The message is split into chunks, encrypted, and sent to the specified node.
+- Receiver/Relay: The Receiver checks for valid source and destination nodes, decrypts and reassembles the message. If the message is intended for its node, it displays it; otherwise, it forwards the message in relay mode.
+
+#### Code Differences:
+- The Receiver/Relay includes additional code for message reception, reassembly, and forwarding.
